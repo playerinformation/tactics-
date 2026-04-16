@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>AthleteScope | Live Hockey Tracker (Firebase RealSync)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', 'Space Grotesk', sans-serif; background: #0a0f1a; overflow-x: hidden; }
+        .viewer-portal { min-height: 100vh; background: radial-gradient(circle at 0% 0%, #0f172a 0%, #0a0f1a 100%); position: relative; }
+        .viewer-portal::before { content: ''; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-image: radial-gradient(circle at 20% 80%, rgba(56, 189, 248, 0.03) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(139, 92, 246, 0.03) 0%, transparent 50%); pointer-events: none; z-index: 0; }
+        .viewer-nav { position: sticky; top: 0; z-index: 100; backdrop-filter: blur(20px); background: rgba(15, 23, 42, 0.7); border-bottom: 1px solid rgba(255,255,255,0.08); padding: 1rem 2rem; }
+        .nav-content { max-width: 1400px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
+        .logo { display: flex; align-items: center; gap: 12px; }
+        .logo-icon { width: 40px; height: 40px; background: linear-gradient(135deg, #38bdf8, #818cf8); border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; color: white; }
+        .logo-text h1 { font-size: 1.4rem; font-weight: 700; background: linear-gradient(135deg, #fff, #94a3b8); background-clip: text; -webkit-background-clip: text; color: transparent; }
+        .logo-text p { font-size: 0.7rem; color: #64748b; }
+        .live-badge { background: #ef4444; color: white; font-size: 0.7rem; padding: 0.2rem 0.8rem; border-radius: 20px; margin-left: 1rem; animation: pulse 1.5s infinite; display: inline-block; }
+        @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
+        .admin-login-btn { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); padding: 0.6rem 1.4rem; border-radius: 60px; color: #e2e8f0; font-weight: 600; cursor: pointer; transition: all 0.3s; display: flex; align-items: center; gap: 8px; backdrop-filter: blur(10px); }
+        .admin-login-btn:hover { background: rgba(56, 189, 248, 0.2); border-color: #38bdf8; color: #38bdf8; transform: translateY(-2px); }
+        .viewer-hero { text-align: center; padding: 4rem 2rem 2rem; position: relative; z-index: 1; }
+        .viewer-hero h1 { font-size: 3.5rem; font-weight: 800; background: linear-gradient(135deg, #fff, #38bdf8, #a78bfa); background-clip: text; -webkit-background-clip: text; color: transparent; letter-spacing: -0.02em; }
+        .viewer-hero p { color: #94a3b8; margin-top: 1rem; font-size: 1.1rem; }
+        .team-matches-section { max-width: 1400px; margin: 2rem auto; padding: 0 2rem; z-index: 1; position: relative; }
+        .section-title { font-size: 1.5rem; font-weight: 700; color: white; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 12px; border-left: 4px solid #38bdf8; padding-left: 1rem; flex-wrap: wrap; }
+        .matches-table-container { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.08); border-radius: 28px; overflow-x: auto; padding: 0.5rem; }
+        .team-match-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .team-match-table th { text-align: left; padding: 1rem 0.8rem; background: rgba(56, 189, 248, 0.1); color: #38bdf8; font-weight: 600; border-bottom: 2px solid rgba(56, 189, 248, 0.3); }
+        .team-match-table td { padding: 0.8rem; color: #cbd5e1; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .team-match-table tr:hover td { background: rgba(56, 189, 248, 0.05); }
+        .win-badge { background: #22c55e20; color: #22c55e; padding: 0.2rem 0.8rem; border-radius: 20px; font-weight: 600; font-size: 0.7rem; display: inline-block; }
+        .loss-badge { background: #ef444420; color: #ef4444; padding: 0.2rem 0.8rem; border-radius: 20px; font-weight: 600; font-size: 0.7rem; }
+        .draw-badge { background: #f59e0b20; color: #f59e0b; padding: 0.2rem 0.8rem; border-radius: 20px; font-weight: 600; font-size: 0.7rem; }
+        .match-score { font-weight: 700; font-size: 1rem; }
+        .stats-chip { display: inline-block; background: rgba(255,255,255,0.08); padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.7rem; margin: 0.1rem; }
+        .players-showcase { max-width: 1400px; margin: 2rem auto; padding: 0 2rem 3rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(560px, 1fr)); gap: 2rem; position: relative; z-index: 1; }
+        .player-card-modern { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.08); border-radius: 32px; overflow: hidden; transition: all 0.3s; }
+        .player-card-modern:hover { transform: translateY(-5px); border-color: rgba(56, 189, 248, 0.4); box-shadow: 0 15px 30px rgba(0,0,0,0.3); }
+        .player-card-header { padding: 1rem 1.5rem; background: linear-gradient(135deg, rgba(56,189,248,0.15), rgba(139,92,246,0.1)); border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+        .player-name { font-size: 1.3rem; font-weight: 800; color: white; letter-spacing: -0.3px; }
+        .player-pos { background: #38bdf820; padding: 0.3rem 1rem; border-radius: 40px; font-size: 0.75rem; font-weight: 600; color: #38bdf8; }
+        .player-stats-mini { padding: 0.5rem 1.5rem; display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.7rem; color: #94a3b8; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .category-section { padding: 0.8rem 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .category-title { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 0.6rem; display: flex; align-items: center; gap: 8px; }
+        .cat-basic { color: #22c55e; } .cat-techniques { color: #8b5cf6; } .cat-tactics { color: #ec4899; }
+        .metric-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; font-size: 0.75rem; }
+        .metric-label { color: #94a3b8; display: flex; align-items: center; gap: 6px; }
+        .metric-value { color: #e2e8f0; font-weight: 600; }
+        .progress-bar-container { margin-top: 3px; height: 5px; background: rgba(255,255,255,0.1); border-radius: 20px; overflow: hidden; }
+        .progress-fill { height: 100%; border-radius: 20px; width: 0%; transition: width 0.4s ease; }
+        .player-footer { padding: 0.8rem 1.5rem; background: rgba(0,0,0,0.2); display: flex; justify-content: space-between; align-items: center; font-size: 0.7rem; color: #64748b; }
+        .admin-portal { background: #0f172a; min-height: 100vh; color: #e2e8f0; }
+        .admin-header { background: #1e293b; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; border-bottom: 2px solid #334155; }
+        .admin-header h2 { font-weight: 700; background: linear-gradient(135deg, #ffb347, #ff8c42); background-clip: text; -webkit-background-clip: text; color: transparent; }
+        .admin-controls { display: flex; gap: 12px; flex-wrap: wrap; }
+        .btn-add-match, .btn-manage-players, .btn-change-pwd, .btn-back-viewer { border: none; padding: 0.6rem 1.4rem; border-radius: 40px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+        .btn-add-match { background: #38bdf8; color: #0f172a; } .btn-manage-players { background: #8b5cf6; color: white; } .btn-change-pwd { background: #3b82f6; color: white; } .btn-back-viewer { background: #334155; color: white; }
+        .admin-stats { display: flex; gap: 1rem; background: #1e293b; padding: 1rem 2rem; border-radius: 32px; margin: 1.5rem 2rem; flex-wrap: wrap; }
+        .admin-matches-table { margin: 0 2rem 2rem; background: #1e293b; border-radius: 32px; overflow-x: auto; padding: 1rem; }
+        .admin-matches-table table { width: 100%; border-collapse: collapse; }
+        .admin-matches-table th, .admin-matches-table td { padding: 0.8rem; text-align: left; border-bottom: 1px solid #334155; }
+        .admin-matches-table th { color: #38bdf8; }
+        .edit-match-btn, .delete-match-btn { padding: 0.3rem 0.8rem; border-radius: 20px; border: none; cursor: pointer; margin: 0 0.2rem; }
+        .edit-match-btn { background: #2563eb; color: white; } .delete-match-btn { background: #dc2626; color: white; }
+        .login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.95); backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; z-index: 2000; }
+        .login-card { background: #1e293b; border-radius: 48px; padding: 2rem; width: 90%; max-width: 400px; text-align: center; }
+        .login-card h2 { color: white; } .login-input { width: 100%; padding: 0.8rem 1rem; margin: 0.6rem 0; border: 2px solid #334155; border-radius: 60px; background: #0f172a; color: white; }
+        .login-btn { background: #38bdf8; color: #0f172a; border: none; width: 100%; padding: 0.8rem; border-radius: 60px; font-weight: 700; cursor: pointer; }
+        .error-msg { color: #f87171; font-size: 0.8rem; margin-top: 0.5rem; }
+        .modal-modern { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); backdrop-filter: blur(8px); align-items: center; justify-content: center; z-index: 2000; }
+        .modal-card { background: #1e293b; color: #f1f5f9; width: 90%; max-width: 1000px; border-radius: 48px; padding: 1.5rem; max-height: 85vh; overflow-y: auto; }
+        .modal-card input, .modal-card select, .modal-card textarea { background: #0f172a; border: 1px solid #334155; color: white; border-radius: 24px; padding: 0.6rem; width: 100%; margin-bottom: 0.8rem; }
+        .form-group { margin-bottom: 1rem; } .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .btn-close-modal { background: #475569; border: none; padding: 0.5rem 1.2rem; border-radius: 30px; color: white; cursor: pointer; }
+        .btn-save-modal { background: #ffb347; border: none; padding: 0.5rem 1.2rem; border-radius: 30px; font-weight: bold; cursor: pointer; }
+        .hidden-portal { display: none; }
+        .success-toast { position: fixed; bottom: 30px; right: 30px; background: #22c55e; color: white; padding: 12px 24px; border-radius: 60px; font-weight: 600; z-index: 3000; animation: fadeInOut 2.5s ease; }
+        @keyframes fadeInOut { 0% { opacity: 0; transform: translateY(20px); } 15% { opacity: 1; transform: translateY(0); } 85% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(20px); } }
+        .admin-grid { display: flex; flex-direction: column; gap: 12px; }
+        .admin-card { background: #1e293b; padding: 12px 18px; border-radius: 32px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        @media (max-width: 700px) { .players-showcase { grid-template-columns: 1fr; padding: 0 1rem; } .viewer-hero h1 { font-size: 2rem; } .form-row { grid-template-columns: 1fr; } }
+        .connection-status { position: fixed; bottom: 20px; left: 20px; background: #1e293b; padding: 0.3rem 0.8rem; border-radius: 20px; font-size: 0.7rem; z-index: 1000; }
+    </style>
+</head>
+<body>
+<h2>Add Player</h2>
+
+<input id="name" placeholder="Player Name" />
+<input id="position" placeholder="Position" />
+<input id="goals" type="number" placeholder="Goals" />
+
+<br><br>
+
+<button onclick="addPlayer()">Save Player</button>
+<button onclick="loadPlayers()">Load Players</button>
+
+<h2>Players List</h2>
+<div id="playerList"></div>
+<!-- VIEWER PORTAL -->
+<div id="viewerPortal" class="viewer-portal">
+    <div class="viewer-nav"><div class="nav-content"><div class="logo"><div class="logo-icon"><i class="fas fa-hockey-puck"></i></div><div class="logo-text"><h1>AthleteScope</h1><p>Hockey Performance Tracker</p></div></div><div style="display: flex; gap: 15px; align-items: center;"><span class="live-badge"><i class="fas fa-broadcast-tower"></i> LIVE SYNC</span><button id="openAdminLoginFromViewer" class="admin-login-btn"><i class="fas fa-shield-alt"></i> Admin Portal <i class="fas fa-arrow-right"></i></button></div></div></div>
+    <div class="viewer-hero"><h1>Hockey Performance Center</h1><p>Real-Time Data • Admin Changes Reflect Instantly Across All Devices</p></div>
+    <div class="team-matches-section"><div class="section-title"><i class="fas fa-calendar-alt" style="color: #38bdf8;"></i><span>Match Schedule & Results</span><span class="sync-status"><i class="fas fa-circle"></i> Live from Firebase</span></div><div class="matches-table-container" id="viewerMatchesTable"><div style="text-align:center; padding:2rem;">Loading matches...</div></div></div>
+    <div class="section-title" style="margin: 0 2rem;"><i class="fas fa-chart-simple" style="color: #38bdf8;"></i><span>Player Performance - Complete Tactics</span><span class="sync-status"><i class="fas fa-sync-alt"></i> Auto-sync</span></div>
+    <div class="players-showcase" id="viewerPlayersGrid"><div style="text-align:center; padding:2rem; color:#64748b;">Loading players...</div></div>
+</div>
+
+<!-- ADMIN PORTAL -->
+<div id="adminPortal" class="admin-portal hidden-portal"><div class="admin-header"><h2><i class="fas fa-user-cog"></i> Hockey Admin Control <span style="font-size:0.8rem; background:#22c55e20; padding:0.2rem 0.8rem; border-radius:20px;">Changes sync LIVE to all viewers</span></h2><div class="admin-controls"><button id="addMatchBtn" class="btn-add-match"><i class="fas fa-plus-circle"></i> Add Match</button><button id="managePlayersBtn" class="btn-manage-players"><i class="fas fa-users"></i> Manage Players</button><button id="changePasswordBtn" class="btn-change-pwd"><i class="fas fa-key"></i> Change Password</button><button id="backToViewerBtn" class="btn-back-viewer"><i class="fas fa-arrow-left"></i> Viewer Mode</button></div></div><div id="adminStatsSummary" class="admin-stats"></div><div class="admin-matches-table"><h3><i class="fas fa-calendar-check"></i> Manage Schedule (Edits sync instantly)</h3><div id="adminMatchesTable"></div></div><div style="margin: 2rem;"><h3>Player Management (Edits sync instantly)</h3><div id="adminPlayersGrid" class="admin-grid"></div></div></div>
+
+<!-- LOGIN MODAL --><div id="loginOverlay" class="login-overlay" style="display: none;"><div class="login-card"><i class="fas fa-shield-alt" style="font-size: 2.5rem; color: #38bdf8;"></i><h2>Admin Access</h2><input type="text" id="loginUsername" class="login-input" placeholder="Username"><input type="password" id="loginPassword" class="login-input" placeholder="Password"><button id="loginBtn" class="login-btn">Login</button><div id="loginError" class="error-msg"></div><p style="margin-top:0.8rem; font-size:0.7rem;">Username: brave | Pass: brave@123</p><button id="cancelLoginBtn" style="margin-top:0.5rem; background:none; border:none; color:#64748b;">Cancel</button></div></div>
+
+<!-- MATCH MODAL --><div id="matchModal" class="modal-modern"><div class="modal-card"><h2 id="matchModalTitle">Match</h2><form id="matchForm"><input type="hidden" id="matchId"><div class="form-group"><label>Date</label><input type="date" id="matchDate" required></div><div class="form-group"><label>Fixture / Opponent</label><input type="text" id="opponent" required></div><div class="form-row"><div><label>Our Goals</label><input type="number" id="ourGoals" value="0"></div><div><label>Opponent Goals</label><input type="number" id="opponentGoals" value="0"></div></div><div class="form-row"><div><label>Venue</label><select id="venue"><option>Home</option><option>Away</option></select></div><div><label>Possession %</label><input type="number" id="possession" value="50"></div></div><div class="form-row"><div><label>Shots</label><input type="number" id="shots" value="0"></div><div><label>Shots on Target</label><input type="number" id="shotsOnTarget" value="0"></div></div><div class="form-row"><div><label>Pass Acc %</label><input type="number" id="passAccuracy" value="80"></div></div><div class="form-group"><label>Notes</label><textarea id="notes" rows="2"></textarea></div><div style="display:flex; gap:12px;"><button type="button" id="closeMatchModalBtn" class="btn-close-modal">Cancel</button><button type="submit" class="btn-save-modal">Save & Sync</button></div></form></div></div>
+
+<!-- PLAYER MODAL -->
+<div id="playerModal" class="modal-modern"><div class="modal-card"><h2>Hockey Player - Complete Tactics</h2><form id="playerForm"><input type="hidden" id="playerId"><div class="form-row"><div><label>Full Name</label><input type="text" id="fullName" required></div><div><label>Position</label><input type="text" id="playingPosition" required></div></div><div class="form-row"><div><label>Age</label><input type="number" id="age"></div><div><label>Nationality</label><input type="text" id="nationality"></div></div><div class="form-row"><div><label>Phone</label><input type="tel" id="phoneNumber"></div></div>
+    <h4 style="margin:0.5rem 0 0.3rem; color:#22c55e;">Basic Skills</h4><div class="form-row"><div><label>Acceleration</label><input type="number" id="acceleration" min="0" max="100" value="85"></div><div><label>Ball Control</label><input type="number" id="ballControl" min="0" max="100" value="82"></div></div><div class="form-row"><div><label>Dribbling</label><input type="number" id="dribbling" min="0" max="100" value="80"></div><div><label>Hitting</label><input type="number" id="hitting" min="0" max="100" value="78"></div></div><div class="form-row"><div><label>Tackling</label><input type="number" id="tackling" min="0" max="100" value="75"></div><div><label>Footwork</label><input type="number" id="footwork" min="0" max="100" value="83"></div></div>
+    <h4 style="margin:0.5rem 0 0.3rem; color:#8b5cf6;">Techniques</h4><div class="form-row"><div><label>Ind Dribbling</label><input type="number" id="indDribbling" min="0" max="100" value="85"></div><div><label>Coordination</label><input type="number" id="coordination" min="0" max="100" value="82"></div></div><div class="form-row"><div><label>Positioning</label><input type="number" id="positioning" min="0" max="100" value="80"></div><div><label>Awareness</label><input type="number" id="awareness" min="0" max="100" value="88"></div></div><div class="form-row"><div><label>Passing</label><input type="number" id="passing" min="0" max="100" value="84"></div><div><label>Communication</label><input type="number" id="communication" min="0" max="100" value="86"></div></div>
+    <h4 style="margin:0.5rem 0 0.3rem; color:#ec4899;">Tactics (Complete Suite)</h4>
+    <div class="form-row"><div><label>Ind Trans With Ball</label><input type="number" id="indTransWithBall" min="0" max="100" value="84"></div><div><label>Ind Trans Without Ball</label><input type="number" id="indTransWithoutBall" min="0" max="100" value="82"></div></div>
+    <div class="form-row"><div><label>Group Trans With Ball</label><input type="number" id="groupTransWithBall" min="0" max="100" value="86"></div><div><label>Group Trans Without Ball</label><input type="number" id="groupTransWithoutBall" min="0" max="100" value="83"></div></div>
+    <div class="form-row"><div><label>Deplacement</label><input type="number" id="deplacement" min="0" max="100" value="87"></div><div><label>Interception</label><input type="number" id="interception" min="0" max="100" value="89"></div></div>
+    <div class="form-row"><div><label>Critical Thinking</label><input type="number" id="criticalThinking" min="0" max="100" value="86"></div><div><label>Clean Sheet</label><input type="number" id="cleanSheet" min="0" max="100" value="72"></div></div>
+    <div class="form-row"><div><label>Defending</label><input type="number" id="defending" min="0" max="100" value="88"></div><div><label>Group Tactics</label><input type="number" id="groupTactics" min="0" max="100" value="85"></div></div>
+    <div class="form-row"><div><label>Forwarding</label><input type="number" id="forwarding" min="0" max="100" value="83"></div><div><label>Attacking</label><input type="number" id="attacking" min="0" max="100" value="86"></div></div>
+    <div class="form-row"><div><label>Individual Tactics</label><input type="number" id="individualTactics" min="0" max="100" value="85"></div><div><label>Dropping</label><input type="number" id="dropping" min="0" max="100" value="78"></div></div>
+    <h4 style="margin:0.5rem 0 0.3rem; color:#f59e0b;">Mental</h4><div class="form-row"><div><label>Concentration</label><input type="number" id="concentration" min="0" max="100" value="85"></div><div><label>Decision Making</label><input type="number" id="decisionMaking" min="0" max="100" value="82"></div></div>
+    <h4 style="margin:0.5rem 0 0.3rem; color:#ef4444;">Discipline</h4><div class="form-row"><div><label>Respect</label><input type="number" id="respect" min="0" max="100" value="90"></div><div><label>Time Management</label><input type="number" id="timeMgmt" min="0" max="100" value="88"></div></div>
+    <h4 style="margin:0.5rem 0 0.3rem; color:#06b6d4;">Physical</h4><div class="form-row"><div><label>Speed</label><input type="number" id="speed" min="0" max="100" value="86"></div><div><label>Strength</label><input type="number" id="strength" min="0" max="100" value="82"></div></div><div class="form-row"><div><label>Endurance</label><input type="number" id="endurance" min="0" max="100" value="88"></div><div><label>Agility</label><input type="number" id="agility" min="0" max="100" value="85"></div></div>
+    <h4 style="margin:0.5rem 0 0.3rem; color:#ec4899;">Match Data</h4><div class="form-row"><div><label>Goals</label><input type="number" id="goals" min="0" value="5"></div><div><label>Assists</label><input type="number" id="assists" min="0" value="4"></div></div><div class="form-group"><label>Bio</label><textarea id="bio" rows="2"></textarea></div>
+    <div style="display:flex; gap:12px;"><button type="button" id="closePlayerModalBtn" class="btn-close-modal">Cancel</button><button type="submit" class="btn-save-modal">Save & Sync</button></div>
+</form></div></div>
+
+<div id="changePwdModal" class="modal-modern"><div class="modal-card"><h2>Change Password</h2><div id="pwdErrorMsg" class="error-msg"></div><input type="password" id="currentPassword" placeholder="Current"><input type="password" id="newPassword" placeholder="New"><input type="password" id="confirmNewPassword" placeholder="Confirm"><div style="display:flex; gap:12px;"><button id="closePwdModalBtn" class="btn-close-modal">Cancel</button><button id="savePwdBtn" class="btn-save-modal">Update</button></div></div></div>
+
+<div class="connection-status" id="connectionStatus"><i class="fas fa-spinner fa-pulse"></i> Connecting to Firebase...</div>
+
+<script>
+    // Firebase configuration
+    const firebaseConfig = {
+        apiKey: "AIzaSyCrGqDchMb_oAAcKCurwSJbOPF8gxIqNVM",
+        authDomain: "athletescope-2af25.firebaseapp.com",
+        projectId: "athletescope-2af25",
+        storageBucket: "athletescope-2af25.firebasestorage.app",
+        messagingSenderId: "595218692271",
+        appId: "1:595218692271:web:c11735a80e7b1eb0523c5a",
+        measurementId: "G-SKD22PNLCG"
+    };
+    
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+    
+    // Admin credentials
+    let adminUsername = "brave", adminPassword = "brave@123";
+    
+    // Default data
+    const defaultMatches = [
+        { id: "m1", date: "2024-03-10", opponent: "APR vs Police", ourGoals: 3, opponentGoals: 2, venue: "Home", shots: 14, shotsOnTarget: 7, possession: 55, passAccuracy: 84, notes: "Great team performance" },
+        { id: "m2", date: "2024-03-17", opponent: "Rwanda vs Kenya", ourGoals: 2, opponentGoals: 2, venue: "Away", shots: 10, shotsOnTarget: 5, possession: 48, passAccuracy: 79, notes: "Dramatic draw" },
+        { id: "m3", date: "2024-03-24", opponent: "Uganda vs Tanzania", ourGoals: 1, opponentGoals: 3, venue: "Neutral", shots: 8, shotsOnTarget: 3, possession: 42, passAccuracy: 74, notes: "Tough loss" }
+    ];
+    
+    const defaultPlayers = [
+        { id: "p1", name: "Jean Paul Uwase", age: 24, nationality: "Rwanda", playingPosition: "Forward", phoneNumber: "+250 788 123 456", bio: "Elite striker with explosive pace", acceleration: 92, ballControl: 88, dribbling: 90, hitting: 85, tackling: 70, footwork: 89, indDribbling: 91, coordination: 86, positioning: 88, awareness: 90, passing: 84, communication: 88, indTransWithBall: 92, indTransWithoutBall: 88, groupTransWithBall: 89, groupTransWithoutBall: 84, deplacement: 90, interception: 85, criticalThinking: 94, cleanSheet: 68, defending: 74, groupTactics: 86, forwarding: 96, attacking: 95, individualTactics: 91, dropping: 72, concentration: 90, decisionMaking: 87, respect: 92, timeMgmt: 88, speed: 94, strength: 82, endurance: 88, agility: 90, balance: 87, goals: 12, assists: 6, yellowCards: 2, redCards: 0 },
+        { id: "p2", name: "Eric Ndayishimiye", age: 28, nationality: "Burundi", playingPosition: "Midfielder", phoneNumber: "+257 79 987 654", bio: "Creative playmaker with vision", acceleration: 85, ballControl: 90, dribbling: 86, hitting: 82, tackling: 75, footwork: 87, indDribbling: 88, coordination: 89, positioning: 85, awareness: 92, passing: 94, communication: 91, indTransWithBall: 89, indTransWithoutBall: 87, groupTransWithBall: 92, groupTransWithoutBall: 90, deplacement: 86, interception: 88, criticalThinking: 95, cleanSheet: 70, defending: 72, groupTactics: 88, forwarding: 85, attacking: 87, individualTactics: 93, dropping: 80, concentration: 88, decisionMaking: 92, respect: 90, timeMgmt: 86, speed: 84, strength: 76, endurance: 90, agility: 86, balance: 84, goals: 5, assists: 14, yellowCards: 3, redCards: 0 },
+        { id: "p3", name: "Olivier Mugisha", age: 30, nationality: "Rwanda", playingPosition: "Defender", phoneNumber: "+250 788 765 432", bio: "Defensive leader & organizer", acceleration: 82, ballControl: 80, dribbling: 75, hitting: 88, tackling: 94, footwork: 80, indDribbling: 76, coordination: 84, positioning: 92, awareness: 88, passing: 82, communication: 90, indTransWithBall: 76, indTransWithoutBall: 86, groupTransWithBall: 83, groupTransWithoutBall: 89, deplacement: 94, interception: 96, criticalThinking: 85, cleanSheet: 82, defending: 98, groupTactics: 93, forwarding: 68, attacking: 72, individualTactics: 86, dropping: 88, concentration: 94, decisionMaking: 89, respect: 95, timeMgmt: 92, speed: 78, strength: 92, endurance: 88, agility: 74, balance: 88, goals: 3, assists: 2, yellowCards: 4, redCards: 1 }
+    ];
+    
+    // Helper functions
+    function showToast(msg) { 
+        const t = document.createElement('div'); 
+        t.className = 'success-toast'; 
+        t.innerHTML = `<i class="fas fa-check-circle"></i> ${msg}`; 
+        document.body.appendChild(t); 
+        setTimeout(() => t.remove(), 2500); 
+    }
+    
+    function updateConnectionStatus(connected) { 
+        const el = document.getElementById('connectionStatus'); 
+        if(connected) el.innerHTML = '<i class="fas fa-check-circle" style="color:#22c55e;"></i> Live • Connected to Firebase'; 
+        else el.innerHTML = '<i class="fas fa-exclamation-triangle" style="color:#f59e0b;"></i> Offline • Changes will sync when reconnected'; 
+    }
+    
+    function getResultClass(our, opp) { if(our > opp) return 'win-badge'; if(our < opp) return 'loss-badge'; return 'draw-badge'; }
+    function getResultText(our, opp) { if(our > opp) return 'WIN'; if(our < opp) return 'LOSS'; return 'DRAW'; }
+    
+    function computeAvg(player, fields) { 
+        let sum = 0, count = 0; 
+        fields.forEach(f => { if(player[f] !== undefined) { sum += player[f]; count++; } }); 
+        return count ? Math.round(sum/count) : 0; 
+    }
+    
+    // Render functions
+    function renderMatches(matches) {
+        if(!matches || !matches.length) { 
+            document.getElementById('viewerMatchesTable').innerHTML = '<div style="text-align:center; padding:2rem;">No matches yet</div>'; 
+            return; 
+        }
+        let html = `<table class="team-match-table"><thead><tr><th>Date</th><th>Fixture</th><th>Venue</th><th>Score</th><th>Result</th><th>Possession</th><th>Shots</th><th>Pass Acc</th><th>Notes</th></tr></thead><tbody>`;
+        [...matches].sort((a,b)=>new Date(b.date)-new Date(a.date)).forEach(m => {
+            html += `<tr>
+                <td style="color:#e2e8f0;">${m.date}</td>
+                <td><strong style="color:white;">${m.opponent}</strong></td>
+                <td><span class="stats-chip">${m.venue}</span></td>
+                <td class="match-score">${m.ourGoals} - ${m.opponentGoals}</td>
+                <td><span class="${getResultClass(m.ourGoals, m.opponentGoals)}">${getResultText(m.ourGoals, m.opponentGoals)}</span></td>
+                <td>${m.possession}%</td><td>${m.shots} (${m.shotsOnTarget} SOT)</td>
+                <td>${m.passAccuracy}%</td><td style="font-size:0.7rem;">${m.notes || '-'}</td>
+            </tr>`;
+        });
+        html += `</tbody></table>`;
+        document.getElementById('viewerMatchesTable').innerHTML = html;
+    }
+    
+    function renderPlayers(players) {
+        if(!players || !players.length) { 
+            document.getElementById('viewerPlayersGrid').innerHTML = '<div style="text-align:center; color:#64748b;">No players</div>'; 
+            return; 
+        }
+        let html = '';
+        players.forEach(p => {
+            const basicAvg = computeAvg(p, ['acceleration','ballControl','dribbling','hitting','tackling','footwork']);
+            const tacticsAvg = computeAvg(p, ['indTransWithBall','indTransWithoutBall','groupTransWithBall','groupTransWithoutBall','deplacement','interception','criticalThinking','cleanSheet','defending','groupTactics','forwarding','attacking','individualTactics','dropping']);
+            const overall = Math.round((basicAvg + tacticsAvg) / 2);
+            html += `<div class="player-card-modern"><div class="player-card-header"><span class="player-name">${p.name}</span><span class="player-pos">${p.playingPosition}</span></div><div class="player-stats-mini"><span><i class="fas fa-flag"></i> ${p.nationality || '—'}</span><span><i class="fas fa-calendar"></i> ${p.age || '—'} yrs</span><span><i class="fas fa-phone"></i> ${p.phoneNumber || '—'}</span><span><i class="fas fa-futbol"></i> ⚽${p.goals}G | 🎯${p.assists}A</span></div>
+            <div class="category-section"><div class="category-title"><i class="fas fa-star"></i> <span class="cat-basic">BASIC SKILLS</span> <span style="margin-left:auto;">${basicAvg}%</span></div>${['acceleration','ballControl','dribbling','hitting','tackling','footwork'].map(k => `<div class="metric-row"><span class="metric-label">${k.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}</span><span class="metric-value">${p[k]}%</span></div><div class="progress-bar-container"><div class="progress-fill" style="width:${p[k]}%; background:#22c55e;"></div></div>`).join('')}</div>
+            <div class="category-section"><div class="category-title"><i class="fas fa-chess-board"></i> <span class="cat-tactics">TACTICS (Complete)</span> <span style="margin-left:auto;">${tacticsAvg}%</span></div>${['indTransWithBall','indTransWithoutBall','groupTransWithBall','groupTransWithoutBall','deplacement','interception','criticalThinking','cleanSheet','defending','forwarding','attacking','individualTactics','dropping'].map(k => `<div class="metric-row"><span class="metric-label">${k.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}</span><span class="metric-value">${p[k]}%</span></div><div class="progress-bar-container"><div class="progress-fill" style="width:${p[k]}%; background:#ec4899;"></div></div>`).join('')}</div>
+            <div class="player-footer"><span><i class="fas fa-quote-left"></i> ${p.bio || 'Hockey player'}</span><span><i class="fas fa-star" style="color:#fbbf24;"></i> Overall: ${overall}%</span></div></div>`;
+        });
+        document.getElementById('viewerPlayersGrid').innerHTML = html;
+    }
+    
+    function renderAdminMatches(matches) {
+        if(!matches) return;
+        let html = `<table><thead><tr><th>Date</th><th>Fixture</th><th>Score</th><th>Venue</th><th>Actions</th></tr></thead><tbody>`;
+        matches.forEach(m => { 
+            html += `<tr><td>${m.date}</td><td>${m.opponent}</td><td>${m.ourGoals}-${m.opponentGoals}</td><td>${m.venue}</td><td><button class="edit-match-btn" data-id="${m.id}">Edit</button> <button class="delete-match-btn" data-id="${m.id}">Del</button></td></tr>`; 
+        });
+        html += `</tbody></table>`;
+        document.getElementById('adminMatchesTable').innerHTML = html;
+        
+        // Re-attach event listeners
+        document.querySelectorAll('.edit-match-btn').forEach(btn => btn.addEventListener('click', () => openMatchModal(btn.dataset.id)));
+        document.querySelectorAll('.delete-match-btn').forEach(btn => btn.addEventListener('click', async () => { 
+            if(confirm('Delete match?')) { 
+                const matchesRef = database.ref('matches');
+                const snapshot = await matchesRef.once('value');
+                let matches = snapshot.val() || defaultMatches;
+                matches = matches.filter(m => m.id !== btn.dataset.id); 
+                await matchesRef.set(matches); 
+                showToast('Match deleted - synced to all devices'); 
+            } 
+        }));
+    }
+    
+    function renderAdminPlayers(players) {
+        if(!players) return;
+        let html = '';
+        players.forEach(p => { 
+            html += `<div class="admin-card"><div><strong>${p.name}</strong> (${p.playingPosition}) | ⚽${p.goals}G 🎯${p.assists}A</div><div><button class="edit-player-btn" data-id="${p.id}">Edit</button> <button class="delete-player-btn" data-id="${p.id}">Del</button></div></div>`; 
+        });
+        document.getElementById('adminPlayersGrid').innerHTML = html;
+        
+        document.querySelectorAll('.edit-player-btn').forEach(btn => btn.addEventListener('click', () => openPlayerModal(btn.dataset.id)));
+        document.querySelectorAll('.delete-player-btn').forEach(btn => btn.addEventListener('click', async () => { 
+            if(confirm('Delete player?')) { 
+                const playersRef = database.ref('players');
+                const snapshot = await playersRef.once('value');
+                let players = snapshot.val() || defaultPlayers;
+                players = players.filter(p => p.id !== btn.dataset.id); 
+                await playersRef.set(players); 
+                showToast('Player deleted - synced to all'); 
+            } 
+        }));
+    }
+    
+    function renderAdminStats(matches) { 
+        if(matches) { 
+            const wins = matches.filter(m => m.ourGoals > m.opponentGoals).length; 
+            const gf = matches.reduce((a,m)=>a+m.ourGoals,0); 
+            document.getElementById('adminStatsSummary').innerHTML = `<span>Matches: ${matches.length}</span><span>Wins: ${wins}</span><span>Goals: ${gf}</span>`; 
+        } 
+    }
+    
+    // Firebase listeners
+    const matchesRef = database.ref('matches');
+    const playersRef = database.ref('players');
+    
+    // Initialize data if empty
+    matchesRef.once('value', (snapshot) => {
+        if(!snapshot.val()) {
+            matchesRef.set(defaultMatches);
+        }
+    });
+    
+    playersRef.once('value', (snapshot) => {
+        if(!snapshot.val()) {
+            playersRef.set(defaultPlayers);
+        }
+    });
+    
+    matchesRef.on('value', (snapshot) => { 
+        let matches = snapshot.val(); 
+        if(!matches) matches = defaultMatches;
+        renderMatches(matches); 
+        renderAdminMatches(matches); 
+        renderAdminStats(matches); 
+        updateConnectionStatus(true); 
+    }, (error) => { updateConnectionStatus(false); });
+    
+    playersRef.on('value', (snapshot) => { 
+        let players = snapshot.val(); 
+        if(!players) players = defaultPlayers;
+        renderPlayers(players); 
+        renderAdminPlayers(players); 
+    });
+    
+    // Modal handlers
+    async function openMatchModal(id=null) { 
+        if(id) { 
+            const snapshot = await matchesRef.once('value');
+            const matches = snapshot.val() || defaultMatches; 
+            const match = matches.find(x => x.id === id); 
+            if(match) fillMatchForm(match); 
+        } else { 
+            fillMatchForm(null); 
+        } 
+        document.getElementById('matchModal').style.display = 'flex'; 
+    }
+    
+    function fillMatchForm(match) { 
+        if(match) { 
+            document.getElementById('matchId').value = match.id; 
+            document.getElementById('matchDate').value = match.date; 
+            document.getElementById('opponent').value = match.opponent; 
+            document.getElementById('ourGoals').value = match.ourGoals; 
+            document.getElementById('opponentGoals').value = match.opponentGoals; 
+            document.getElementById('venue').value = match.venue; 
+            document.getElementById('possession').value = match.possession; 
+            document.getElementById('shots').value = match.shots; 
+            document.getElementById('shotsOnTarget').value = match.shotsOnTarget; 
+            document.getElementById('passAccuracy').value = match.passAccuracy; 
+            document.getElementById('notes').value = match.notes || ''; 
+        } else { 
+            document.getElementById('matchForm').reset(); 
+            document.getElementById('matchId').value = ''; 
+            document.getElementById('matchDate').value = new Date().toISOString().slice(0,10); 
+        } 
+    }
+    
+    document.getElementById('matchForm').addEventListener('submit', async (e) => { 
+        e.preventDefault(); 
+        const id = document.getElementById('matchId').value; 
+        const snapshot = await matchesRef.once('value');
+        let matches = snapshot.val() || defaultMatches; 
+        const matchData = { 
+            date: document.getElementById('matchDate').value, 
+            opponent: document.getElementById('opponent').value, 
+            ourGoals: +document.getElementById('ourGoals').value, 
+            opponentGoals: +document.getElementById('opponentGoals').value, 
+            venue: document.getElementById('venue').value, 
+            possession: +document.getElementById('possession').value, 
+            shots: +document.getElementById('shots').value, 
+            shotsOnTarget: +document.getElementById('shotsOnTarget').value, 
+            passAccuracy: +document.getElementById('passAccuracy').value, 
+            notes: document.getElementById('notes').value, 
+            id: id || 'm_' + Date.now() 
+        }; 
+        
+        if(id) { 
+            const idx = matches.findIndex(m => m.id === id); 
+            if(idx !== -1) matches[idx] = matchData; 
+            else matches.push(matchData); 
+        } else { 
+            matches.push(matchData); 
+        } 
+        await matchesRef.set(matches); 
+        document.getElementById('matchModal').style.display = 'none'; 
+        showToast('Match saved & synced to all devices'); 
+    });
+    
+    async function openPlayerModal(id=null) { 
+        if(id) { 
+            const snapshot = await playersRef.once('value');
+            const players = snapshot.val() || defaultPlayers; 
+            const player = players.find(x => x.id === id); 
+            if(player) fillPlayerForm(player); 
+        } else { 
+            fillPlayerForm(null); 
+        } 
+        document.getElementById('playerModal').style.display = 'flex'; 
+    }
+    
+    function fillPlayerForm(player) { 
+        if(player) { 
+            document.getElementById('playerId').value = player.id; 
+            document.getElementById('fullName').value = player.name; 
+            document.getElementById('playingPosition').value = player.playingPosition; 
+            document.getElementById('age').value = player.age; 
+            document.getElementById('nationality').value = player.nationality; 
+            document.getElementById('phoneNumber').value = player.phoneNumber || ''; 
+            const fields = ['acceleration','ballControl','dribbling','hitting','tackling','footwork','indDribbling','coordination','positioning','awareness','passing','communication','indTransWithBall','indTransWithoutBall','groupTransWithBall','groupTransWithoutBall','deplacement','interception','criticalThinking','cleanSheet','defending','groupTactics','forwarding','attacking','individualTactics','dropping','concentration','decisionMaking','respect','timeMgmt','speed','strength','endurance','agility','goals','assists'];
+            fields.forEach(f => { if(player[f] !== undefined) document.getElementById(f).value = player[f]; }); 
+            document.getElementById('bio').value = player.bio || ''; 
+        } else { 
+            document.getElementById('playerForm').reset(); 
+            document.getElementById('playerId').value = ''; 
+        } 
+    }
+    
+    document.getElementById('playerForm').addEventListener('submit', async (e) => { 
+        e.preventDefault(); 
+        const id = document.getElementById('playerId').value; 
+        const snapshot = await playersRef.once('value');
+        let players = snapshot.val() || defaultPlayers; 
+        const playerData = { 
+            name: document.getElementById('fullName').value, 
+            playingPosition: document.getElementById('playingPosition').value, 
+            age: +document.getElementById('age').value, 
+            nationality: document.getElementById('nationality').value, 
+            phoneNumber: document.getElementById('phoneNumber').value, 
+            bio: document.getElementById('bio').value, 
+            id: id || 'p_' + Date.now() 
+        }; 
+        const fields = ['acceleration','ballControl','dribbling','hitting','tackling','footwork','indDribbling','coordination','positioning','awareness','passing','communication','indTransWithBall','indTransWithoutBall','groupTransWithBall','groupTransWithoutBall','deplacement','interception','criticalThinking','cleanSheet','defending','groupTactics','forwarding','attacking','individualTactics','dropping','concentration','decisionMaking','respect','timeMgmt','speed','strength','endurance','agility','goals','assists'];
+        fields.forEach(f => { playerData[f] = +document.getElementById(f).value; }); 
+        
+        if(id) { 
+            const idx = players.findIndex(p => p.id === id); 
+            if(idx !== -1) players[idx] = playerData; 
+            else players.push(playerData); 
+        } else { 
+            players.push(playerData); 
+        } 
+        await playersRef.set(players); 
+        document.getElementById('playerModal').style.display = 'none'; 
+        showToast('Player saved & synced to all devices'); 
+    });
+    
+    // Auth and UI
+    function showLoginModal() { document.getElementById('loginOverlay').style.display = 'flex'; }
+    function hideLoginModal() { document.getElementById('loginOverlay').style.display = 'none'; }
+    function login() { 
+        const u = document.getElementById('loginUsername').value, p = document.getElementById('loginPassword').value; 
+        if(u === adminUsername && p === adminPassword) { 
+            hideLoginModal(); 
+            document.getElementById('viewerPortal').classList.add('hidden-portal'); 
+            document.getElementById('adminPortal').classList.remove('hidden-portal'); 
+        } else { 
+            document.getElementById('loginError').innerText = 'Invalid credentials'; 
+        } 
+    }
+    function showViewer() { 
+        document.getElementById('viewerPortal').classList.remove('hidden-portal'); 
+        document.getElementById('adminPortal').classList.add('hidden-portal'); 
+    }
+    function changePassword() { 
+        const curr = document.getElementById('currentPassword').value, newp = document.getElementById('newPassword').value, conf = document.getElementById('confirmNewPassword').value; 
+        if(curr !== adminPassword) { document.getElementById('pwdErrorMsg').innerText = 'Wrong current password'; return; } 
+        if(newp.length < 4) { document.getElementById('pwdErrorMsg').innerText = 'Min 4 chars'; return; } 
+        if(newp !== conf) { document.getElementById('pwdErrorMsg').innerText = 'Mismatch'; return; } 
+        adminPassword = newp; 
+        localStorage.setItem('admin_creds', JSON.stringify({ username: adminUsername, password: adminPassword })); 
+        showToast('Password changed'); 
+        document.getElementById('changePwdModal').style.display = 'none'; 
+    }
+    
+    // Event listeners
+    document.getElementById('openAdminLoginFromViewer').addEventListener('click', showLoginModal);
+    document.getElementById('backToViewerBtn').addEventListener('click', showViewer);
+    document.getElementById('loginBtn').addEventListener('click', login);
+    document.getElementById('cancelLoginBtn').addEventListener('click', hideLoginModal);
+    document.getElementById('addMatchBtn').addEventListener('click', () => openMatchModal());
+    document.getElementById('managePlayersBtn').addEventListener('click', () => openPlayerModal());
+    document.getElementById('changePasswordBtn').addEventListener('click', () => document.getElementById('changePwdModal').style.display = 'flex');
+    document.getElementById('closeMatchModalBtn').addEventListener('click', () => document.getElementById('matchModal').style.display = 'none');
+    document.getElementById('closePlayerModalBtn').addEventListener('click', () => document.getElementById('playerModal').style.display = 'none');
+    document.getElementById('closePwdModalBtn').addEventListener('click', () => document.getElementById('changePwdModal').style.display = 'none');
+    document.getElementById('savePwdBtn').addEventListener('click', changePassword);
+    
+    window.addEventListener('click', (e) => { 
+        if(e.target === document.getElementById('loginOverlay')) hideLoginModal(); 
+        if(e.target === document.getElementById('matchModal')) document.getElementById('matchModal').style.display = 'none'; 
+        if(e.target === document.getElementById('playerModal')) document.getElementById('playerModal').style.display = 'none'; 
+        if(e.target === document.getElementById('changePwdModal')) document.getElementById('changePwdModal').style.display = 'none'; 
+    });
+    
+    // Load stored credentials
+    const stored = localStorage.getItem('admin_creds'); 
+    if(stored) { const creds = JSON.parse(stored); adminUsername = creds.username; adminPassword = creds.password; }
+</script>
+<script type="module">
+  // Import Firebase
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getDatabase, ref, set, get, child } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+  // 🔥 Your Firebase config (replace with your own from Firebase console)
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "athletescope-2af25.firebaseapp.com",
+    databaseURL: "https://athletescope-2af25-default-rtdb.firebaseio.com",
+    projectId: "athletescope-2af25",
+    storageBucket: "athletescope-2af25.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+
+  console.log("Firebase connected ✅");
+
+  // -------------------------
+  // 🟢 SAVE PLAYER FUNCTION
+  // -------------------------
+  window.addPlayer = function () {
+    const name = document.getElementById("name").value;
+    const position = document.getElementById("position").value;
+    const goals = document.getElementById("goals").value;
+
+    set(ref(db, "players/" + name), {
+      name: name,
+      position: position,
+      goals: Number(goals)
+    });
+
+    alert("Player saved successfully!");
+  };
+
+  // -------------------------
+  // 🔵 LOAD PLAYERS FUNCTION
+  // -------------------------
+  window.loadPlayers = function () {
+    const dbRef = ref(db);
+
+    get(child(dbRef, "players")).then((snapshot) => {
+      const list = document.getElementById("playerList");
+      list.innerHTML = "";
+
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+
+        for (let key in data) {
+          const player = data[key];
+
+          list.innerHTML += `
+            <div style="padding:10px; border:1px solid #ccc; margin:5px;">
+              <b>${player.name}</b><br>
+              Position: ${player.position}<br>
+              Goals: ${player.goals}
+            </div>
+          `;
+        }
+      } else {
+        list.innerHTML = "No players found";
+      }
+    });
+  };
+</script>
+</body>
+</html>
